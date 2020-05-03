@@ -65,15 +65,15 @@ public class MainActivity extends AppCompatActivity {
             PdfiumSDK sdk = new PdfiumSDK();
             sdk.newDocument(fileDescriptor);
 
-            Log.d("PDFSDK", "Page count: " + sdk.getPageCount());
+            Log.d("PDFIUM", "Page count: " + sdk.getPageCount());
 
             Meta meta = sdk.getDocumentMeta();
-            Log.d("PDFSDK", meta.toString());
+            Log.d("PDFIUM", meta.toString());
 
             sdk.openPage(0);
 
             Size size = sdk.getPageSize(0);
-            Log.d("PDFSDK", "Page size: " + size.toString());
+            Log.d("PDFIUM", "Page size: " + size.toString());
 
             int width = getScreenWidth();
             int height = getScreenHeight();
