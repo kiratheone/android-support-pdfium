@@ -17,6 +17,7 @@ import org.benjinus.pdfium.util.Size;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -179,14 +180,14 @@ public class PdfiumSDK {
     /**
      * Create new document from file
      */
-    public void newDocument(ParcelFileDescriptor fd) throws IOException {
+    public void newDocument(ParcelFileDescriptor fd) {
         newDocument(fd, null);
     }
 
     /**
      * Create new document from file with password
      */
-    public synchronized void newDocument(ParcelFileDescriptor fd, String password) throws IOException {
+    public synchronized void newDocument(ParcelFileDescriptor fd, String password) {
         mFileDescriptor = fd;
         int numFd = FileUtils.getNumFd(fd);
         mNativeDocPtr = nativeOpenDocument(numFd, password);
@@ -197,7 +198,6 @@ public class PdfiumSDK {
      */
     public int getPageCount() {
         return nativeGetPageCount(mNativeDocPtr);
-
     }
 
     /**
@@ -207,9 +207,17 @@ public class PdfiumSDK {
         long pagePtr;
         pagePtr = nativeLoadPage(mNativeDocPtr, pageIndex);
         mNativePagesPtr.put(pageIndex, pagePtr);
-        prepareTextInfo(pageIndex);
         return pagePtr;
+    }
 
+    /**
+     * Open page and store native pointer
+     */
+    public void closePage(int pageIndex) {
+        Long pagePtr = mNativePagesPtr.remove(pageIndex);
+        if (pagePtr != null) {
+            nativeClosePage(pagePtr);
+        }
     }
 
     /**
@@ -315,11 +323,11 @@ public class PdfiumSDK {
                            int startX, int startY, int drawSizeX, int drawSizeY,
                            boolean renderAnnot) {
         try {
-            //nativeRenderPage(mNativePagesPtr.get(pageIndex), surface, mCurrentDpi);
+            //noinspection ConstantConditions
             nativeRenderPage(mNativePagesPtr.get(pageIndex), surface, mCurrentDpi,
                     startX, startY, drawSizeX, drawSizeY, renderAnnot);
         } catch (NullPointerException e) {
-            Log.e(TAG, "mContext may be null");
+            Log.e(TAG, "Did you forget to open the page?");
             e.printStackTrace();
         } catch (Exception e) {
             Log.e(TAG, "Exception throw from native");
@@ -352,10 +360,11 @@ public class PdfiumSDK {
                                  int startX, int startY, int drawSizeX, int drawSizeY,
                                  boolean renderAnnot) {
         try {
+            //noinspection ConstantConditions
             nativeRenderPageBitmap(mNativePagesPtr.get(pageIndex), bitmap, mCurrentDpi,
                     startX, startY, drawSizeX, drawSizeY, renderAnnot);
         } catch (NullPointerException e) {
-            Log.e(TAG, "mContext may be null");
+            Log.e(TAG, "Did you forget to open the page?");
             e.printStackTrace();
         } catch (Exception e) {
             Log.e(TAG, "Exception throw from native");
@@ -368,11 +377,13 @@ public class PdfiumSDK {
      */
     public void closeDocument() {
         for (Integer index : mNativePagesPtr.keySet()) {
+            //noinspection ConstantConditions
             nativeClosePage(mNativePagesPtr.get(index));
         }
         mNativePagesPtr.clear();
 
         for (Integer ptr : mNativeTextPagesPtr.keySet()) {
+            //noinspection ConstantConditions
             nativeCloseTextPage(mNativeTextPagesPtr.get(ptr));
         }
         mNativeTextPagesPtr.clear();
@@ -475,8 +486,15 @@ public class PdfiumSDK {
      */
     public Point mapPageCoordsToDevice(int pageIndex, int startX, int startY, int sizeX,
                                        int sizeY, int rotate, double pageX, double pageY) {
-        long pagePtr = mNativePagesPtr.get(pageIndex);
-        return nativePageCoordinateToDevice(pagePtr, startX, startY, sizeX, sizeY, rotate, pageX, pageY);
+        try {
+            //noinspection ConstantConditions
+            long pagePtr = mNativePagesPtr.get(pageIndex);
+            return nativePageCoordinateToDevice(pagePtr, startX, startY, sizeX, sizeY, rotate, pageX, pageY);
+        } catch (NullPointerException e) {
+            Log.e(TAG, "Did you forget to open the page?");
+            e.printStackTrace();
+            return new Point(0, 0);
+        }
     }
 
     /**
@@ -514,8 +532,15 @@ public class PdfiumSDK {
      */
     public PointF mapDeviceCoordinateToPage(int pageIndex, int startX, int startY, int sizeX,
                                             int sizeY, int rotate, int deviceX, int deviceY) {
-        long pagePtr = mNativePagesPtr.get(pageIndex);
-        return nativeDeviceCoordinateToPage(pagePtr, startX, startY, sizeX, sizeY, rotate, deviceX, deviceY);
+        try {
+            //noinspection ConstantConditions
+            long pagePtr = mNativePagesPtr.get(pageIndex);
+            return nativeDeviceCoordinateToPage(pagePtr, startX, startY, sizeX, sizeY, rotate, deviceX, deviceY);
+        } catch (NullPointerException e) {
+            Log.e(TAG, "Did you forget to open the page?");
+            e.printStackTrace();
+            return new PointF(0, 0);
+        }
     }
 
     /**
@@ -557,8 +582,7 @@ public class PdfiumSDK {
      * @param pageIndex index of page.
      */
     public void releaseTextInfo(int pageIndex) {
-        long textPagePtr;
-        textPagePtr = mNativeTextPagesPtr.get(pageIndex);
+        Long textPagePtr = mNativeTextPagesPtr.get(pageIndex);
         if (validPtr(textPagePtr)) {
             nativeCloseTextPage(textPagePtr);
         }
@@ -594,9 +618,8 @@ public class PdfiumSDK {
      * @param toIndex   end index of page.
      */
     public void releaseTextInfo(int fromIndex, int toIndex) {
-        long textPagesPtr;
         for (int i = fromIndex; i < toIndex + 1; i++) {
-            textPagesPtr = mNativeTextPagesPtr.get(i);
+            Long textPagesPtr = mNativeTextPagesPtr.get(i);
             if (validPtr(textPagesPtr)) {
                 nativeCloseTextPage(textPagesPtr);
             }
@@ -647,7 +670,7 @@ public class PdfiumSDK {
                 bb.putShort(s);
             }
 
-            return new String(bytes, "UTF-16LE");
+            return new String(bytes, StandardCharsets.UTF_16LE);
         } catch (Exception e) {
             return null;
         }
@@ -798,7 +821,7 @@ public class PdfiumSDK {
                 short s = buf[i];
                 bb.putShort(s);
             }
-            return new String(bytes, "UTF-16LE");
+            return new String(bytes, StandardCharsets.UTF_16LE);
         } catch (Exception e) {
             return null;
         }
@@ -828,8 +851,10 @@ public class PdfiumSDK {
                 long textPage = prepareTextInfo(pageIndex);
 
                 if (hasSearchHandle(pageIndex)) {
-                    long sPtr = mNativeSearchHandlePtr.get(pageIndex);
-                    nativeSearchStop(sPtr);
+                    Long sPtr = mNativeSearchHandlePtr.get(pageIndex);
+                    if (validPtr(sPtr)) {
+                        nativeSearchStop(sPtr);
+                    }
                 }
 
                 this.mSearchHandlePtr = nativeSearchStart(textPage, query, matchCase, matchWholeWord);
